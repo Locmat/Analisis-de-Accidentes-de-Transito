@@ -1,0 +1,13 @@
+campo,valor_origen,valor_homologado
+Road_Type,Single carriageway,Calzada simple
+Road_Type,Dual carriageway,Calzada doble
+Road_Type,Roundabout,Rotonda
+Road_Type,One way street,Calle de un solo sentido
+Road_Type,Slip road,Vía de incorporación
+Road_Type,Sin información,No Especificado
+Road_Surface_Conditions,Dry,Seca
+Road_Surface_Conditions,Wet or damp,Mojada o húmeda
+Road_Surface_Conditions,Snow,Nieve
+Road_Surface_Conditions,Frost or ice,Escarcha o hielo
+Road_Surface_Conditions,Flood over 3cm. deep,Inundación (más de 3 cm)
+Road_Surface_Conditions,Sin información,No Especificado

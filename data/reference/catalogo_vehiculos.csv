@@ -1,0 +1,18 @@
+tipo_vehiculo_origen,categoria_vehiculo,tipo_vehiculo_homologado
+Car,Particular,Automóvil
+Taxi/Private hire car,Público,Taxi / Transporte privado
+Bus or coach (17 or more pass seats),Público,Autobús / Microbús
+Minibus (8 - 16 passenger seats),Público,Minibús
+Van / Goods 3.5 tonnes mgw or under,Carga,Furgón / Camioneta hasta 3.5t
+Goods over 3.5t. and under 7.5t,Carga,Camión mediano (3.5t a 7.5t)
+Goods 7.5 tonnes mgw and over,Carga,Camión pesado (7.5t o más)
+Agricultural vehicle,Especial / Agrícola,Vehículo agrícola
+Motorcycle 50cc and under,Motos,Motocicleta hasta 50cc
+Motorcycle 125cc and under,Motos,Motocicleta hasta 125cc
+Motorcycle over 125cc and up to 500cc,Motos,Motocicleta 125cc a 500cc
+Motorcycle over 500cc,Motos,Motocicleta sobre 500cc
+Pedal cycle,No motorizado,Bicicleta
+Ridden horse,No motorizado,Tracción animal
+Other vehicle,Otro,Otro vehículo
+Data missing or out of range,No Especificado,Sin información
+Sin información,No Especificado,Sin información

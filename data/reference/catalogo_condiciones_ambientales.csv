@@ -1,0 +1,16 @@
+campo,valor_origen,valor_homologado
+Light_Conditions,Daylight,Luz de día
+Light_Conditions,Darkness - lights lit,Oscuridad con alumbrado encendido
+Light_Conditions,Darkness - lights unlit,Oscuridad con alumbrado apagado
+Light_Conditions,Darkness - no lighting,Oscuridad sin alumbrado
+Light_Conditions,Darkness - lighting unknown,Oscuridad con alumbrado desconocido
+Light_Conditions,Sin información,No Registrado
+Weather_Conditions,Fine no high winds,Despejado sin viento fuerte
+Weather_Conditions,Fine + high winds,Despejado con viento fuerte
+Weather_Conditions,Raining no high winds,Lluvia sin viento fuerte
+Weather_Conditions,Raining + high winds,Lluvia con viento fuerte
+Weather_Conditions,Snowing no high winds,Nieve sin viento fuerte
+Weather_Conditions,Snowing + high winds,Nieve con viento fuerte
+Weather_Conditions,Fog or mist,Niebla o neblina
+Weather_Conditions,Other,Otro
+Weather_Conditions,Sin información,No Registrado
