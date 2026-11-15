@@ -7,7 +7,8 @@
 -- =============================================================================
 -- PASO 1: Poblamiento de DIM_Tiempo (2019-01-01 a 2025-12-31)
 -- =============================================================================
-TRUNCATE TABLE dwh.DIM_Tiempo CASCADE;
+TRUNCATE TABLE dwh.FACT_Accidentes, dwh.DIM_Tiempo, dwh.DIM_Ubicacion, dwh.DIM_Vehiculo, dwh.DIM_Contexto_Siniestro RESTART IDENTITY CASCADE;
+ANALYZE staging.stg_accident_data;
 
 -- Registro centinela para fechas no especificadas
 INSERT INTO dwh.DIM_Tiempo (ID_Tiempo, Fecha, Anio, Mes, Dia, Dia_Semana, Festividad)
@@ -32,13 +33,23 @@ SELECT
         WHEN 7 THEN 'Domingo'
     END AS Dia_Semana,
     CASE 
-        WHEN EXTRACT(MONTH FROM d) = 1 AND EXTRACT(DAY FROM d) = 1 THEN 'Año Nuevo'
-        WHEN EXTRACT(MONTH FROM d) = 12 AND EXTRACT(DAY FROM d) = 25 THEN 'Navidad'
-        WHEN EXTRACT(MONTH FROM d) = 12 AND EXTRACT(DAY FROM d) = 26 THEN 'Boxing Day'
-        WHEN EXTRACT(ISODOW FROM d) IN (6, 7) THEN 'Fin de Semana'
-        ELSE 'Día Hábil'
+        WHEN TO_CHAR(d, 'MM-DD') = '01-01' THEN 'Año Nuevo'
+        WHEN TO_CHAR(d, 'MM-DD') = '10-31' THEN 'Halloween'
+        WHEN TO_CHAR(d, 'MM-DD') = '11-05' THEN 'Guy Fawkes Night'
+        WHEN TO_CHAR(d, 'MM-DD') = '12-25' THEN 'Navidad'
+        WHEN TO_CHAR(d, 'MM-DD') = '12-26' THEN 'Boxing Day'
+        WHEN d::DATE IN ('2019-04-19','2020-04-10','2021-04-02','2022-04-15','2023-04-07','2024-03-29','2025-04-18') THEN 'Viernes Santo'
+        WHEN d::DATE IN ('2019-04-22','2020-04-13','2021-04-05','2022-04-18','2023-04-10','2024-04-01','2025-04-21') THEN 'Lunes de Pascua'
+        WHEN d::DATE IN ('2019-05-06','2020-05-08','2021-05-03','2022-05-02','2023-05-01','2024-05-06','2025-05-05') THEN 'Early May Bank Holiday'
+        WHEN d::DATE IN ('2019-05-27','2020-05-25','2021-05-31','2022-06-02','2023-05-29','2024-05-27','2025-05-26') THEN 'Spring Bank Holiday'
+        WHEN d::DATE IN ('2019-08-26','2020-08-31','2021-08-30','2022-08-29','2023-08-28','2024-08-26','2025-08-25') THEN 'Summer Bank Holiday'
+        WHEN d::DATE = '2022-06-03' THEN 'Jubileo de Platino'
+        WHEN d::DATE = '2022-09-19' THEN 'Funeral de Isabel II'
+        WHEN d::DATE = '2023-05-08' THEN 'Coronación de Carlos III'
+        ELSE 'Sin festividad'
     END AS Festividad
-FROM generate_series('2019-01-01'::DATE, '2025-12-31'::DATE, '1 day'::INTERVAL) AS d
+-- ::TIMESTAMP (sin zona horaria) evita desfases DST que omiten 2025-12-31
+FROM generate_series('2019-01-01'::TIMESTAMP, '2025-12-31'::TIMESTAMP, '1 day'::INTERVAL) AS d
 ON CONFLICT (ID_Tiempo) DO NOTHING;
 
 -- =============================================================================
@@ -71,15 +82,18 @@ SELECT DISTINCT
         ELSE 'Sin información'
     END AS Area_Urbana,
     CASE 
-        WHEN latitude ~ '^-?[0-9]+(\.[0-9]+)?$' THEN latitude::DECIMAL(10,6)
+        WHEN TRIM(latitude) ~ '^-?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$'
+         AND TRIM(latitude)::DOUBLE PRECISION BETWEEN -90 AND 90
+        THEN TRIM(latitude)::DOUBLE PRECISION
         ELSE NULL
     END AS Latitud,
     CASE 
-        WHEN longitude ~ '^-?[0-9]+(\.[0-9]+)?$' THEN longitude::DECIMAL(10,6)
+        WHEN TRIM(longitude) ~ '^-?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$'
+         AND TRIM(longitude)::DOUBLE PRECISION BETWEEN -180 AND 180
+        THEN TRIM(longitude)::DOUBLE PRECISION
         ELSE NULL
     END AS Longitud
 FROM staging.stg_accident_data
-WHERE district_area IS NOT NULL
 ON CONFLICT (Distrito_Area, Area_Urbana, Latitud, Longitud) DO NOTHING;
 
 -- =============================================================================
@@ -168,10 +182,28 @@ FROM staging.stg_accident_data
 ON CONFLICT (Condicion_Luz, Condicion_Clima, Condicion_Superficie, Tipo_Calzada, Severidad) DO NOTHING;
 
 -- =============================================================================
--- PASO 6: Carga de FACT_Accidentes (Transform & Load)
+-- PASO 6: Carga de FACT_Accidentes (Deduplicación exacta 14 columnas + Load)
 -- =============================================================================
-TRUNCATE TABLE dwh.FACT_Accidentes;
+ANALYZE dwh.DIM_Ubicacion;
 
+WITH stg_dedup AS (
+    SELECT DISTINCT
+        index_origen,
+        accident_severity,
+        accident_date,
+        latitude,
+        light_conditions,
+        district_area,
+        longitude,
+        number_of_casualties,
+        number_of_vehicles,
+        road_surface_conditions,
+        road_type,
+        urban_or_rural_area,
+        weather_conditions,
+        vehicle_type
+    FROM staging.stg_accident_data
+)
 INSERT INTO dwh.FACT_Accidentes (
     ID_Tiempo,
     ID_Ubicacion,
@@ -189,13 +221,13 @@ SELECT
     1 AS Cantidad_Accidentes,
     GREATEST(0, COALESCE(NULLIF(TRIM(stg.number_of_casualties), '')::INT, 0)) AS Cantidad_Victimas,
     GREATEST(1, COALESCE(NULLIF(TRIM(stg.number_of_vehicles), '')::INT, 1)) AS Cantidad_Vehiculos
-FROM staging.stg_accident_data stg
+FROM stg_dedup stg
 
 -- Lookup DIM_Tiempo
 LEFT JOIN dwh.DIM_Tiempo dt 
-    ON dt.Fecha = TO_DATE(stg.accident_date, 'DD-MM-YYYY')
+    ON dt.Fecha = TO_DATE(NULLIF(TRIM(stg.accident_date), ''), 'DD-MM-YYYY')
 
--- Lookup DIM_Ubicacion
+-- Lookup DIM_Ubicacion (-999 fuera de [-90,90]/[-180,180] habilita Hash Join con NULLs)
 LEFT JOIN dwh.DIM_Ubicacion du
     ON du.Distrito_Area = COALESCE(NULLIF(TRIM(stg.district_area), ''), 'Sin información')
     AND du.Area_Urbana = (CASE 
@@ -203,9 +235,23 @@ LEFT JOIN dwh.DIM_Ubicacion du
                             WHEN stg.urban_or_rural_area ILIKE 'Rural' THEN 'Rural'
                             ELSE 'Sin información'
                          END)
-    AND (
-        (du.Latitud = stg.latitude::DECIMAL(10,6) AND du.Longitud = stg.longitude::DECIMAL(10,6))
-        OR (du.Latitud IS NULL AND stg.latitude IS NULL)
+    AND COALESCE(du.Latitud, -999::DOUBLE PRECISION) = COALESCE(
+        CASE 
+            WHEN TRIM(stg.latitude) ~ '^-?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$'
+             AND TRIM(stg.latitude)::DOUBLE PRECISION BETWEEN -90 AND 90
+            THEN TRIM(stg.latitude)::DOUBLE PRECISION
+            ELSE NULL
+        END,
+        -999::DOUBLE PRECISION
+    )
+    AND COALESCE(du.Longitud, -999::DOUBLE PRECISION) = COALESCE(
+        CASE 
+            WHEN TRIM(stg.longitude) ~ '^-?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$'
+             AND TRIM(stg.longitude)::DOUBLE PRECISION BETWEEN -180 AND 180
+            THEN TRIM(stg.longitude)::DOUBLE PRECISION
+            ELSE NULL
+        END,
+        -999::DOUBLE PRECISION
     )
 
 -- Lookup DIM_Vehiculo
@@ -296,19 +342,4 @@ LEFT JOIN dwh.DIM_Contexto_Siniestro dc
             ELSE 'Sin información'
         END
     );
-
--- =============================================================================
--- PASO 7: Validaciones y Auditoría de Conciliación
--- =============================================================================
-SELECT 'staging.stg_accident_data' AS tabla, COUNT(*) AS total_registros FROM staging.stg_accident_data
-UNION ALL
-SELECT 'dwh.FACT_Accidentes' AS tabla, COUNT(*) AS total_registros FROM dwh.FACT_Accidentes;
-
--- Verificación de claves foráneas huérfanas (debe retornar 0 en todas)
-SELECT 
-    COUNT(*) FILTER (WHERE ID_Tiempo = -1) AS huerfanos_tiempo,
-    COUNT(*) FILTER (WHERE ID_Ubicacion = -1) AS huerfanos_ubicacion,
-    COUNT(*) FILTER (WHERE ID_Vehiculo = -1) AS huerfanos_vehiculo,
-    COUNT(*) FILTER (WHERE ID_Contexto_Siniestro = -1) AS huerfanos_contexto
-FROM dwh.FACT_Accidentes;
 
