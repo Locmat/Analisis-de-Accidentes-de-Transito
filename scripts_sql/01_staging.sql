@@ -24,6 +24,7 @@ CREATE TABLE staging.stg_accident_data (
     urban_or_rural_area      VARCHAR(100),
     weather_conditions       VARCHAR(150),
     vehicle_type             VARCHAR(150),
+    numero_fila              INT NOT NULL,
     fecha_carga              TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
