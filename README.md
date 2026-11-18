@@ -1,61 +1,112 @@
 # Solución de Inteligencia de Negocios: Accidentes de Tránsito (DfT)
 
-Arquitectura de Data Warehouse (esquema estrella) y procesos ETL en PostgreSQL + Python para el análisis de seguridad vial del Department for Transport (Reino Unido, 2019–2025).
+Proyecto de Data Warehouse con esquema estrella y proceso ETL para analizar accidentes de tránsito del Department for Transport (Reino Unido) entre 2019 y 2025. La solución utiliza PostgreSQL para las capas de *staging* y DWH, y Python para ejecutar y auditar la carga.
 
-## Requisitos Previos
+## Requisitos
 
-- PostgreSQL 16+ (requerido por `UNIQUE NULLS NOT DISTINCT`)
-- Python 3.11+
+- PostgreSQL 16 o superior, requerido por `UNIQUE NULLS NOT DISTINCT`.
+- Python 3.11 o superior.
+- El archivo `data/raw/accident_data.csv` incluido en el proyecto.
 
-## Estructura del Proyecto
+## Estructura del proyecto
 
-```
+```text
 Analisis-de-Accidentes-de-Transito/
 ├── data/
-│   ├── raw/             # Archivo accident_data.csv original (670,679 filas)
-│   └── reference/       # Catálogos de homologación y calendario UK (.csv)
-├── scripts_sql/
-│   ├── 01_staging.sql   # DDL de staging con trazabilidad numero_fila y fecha_carga
-│   ├── 02_dwh.sql       # DDL del esquema estrella (dwh.*)
-│   └── 03_etl_load.sql  # Transformación, deduplicación exacta y carga al DWH
+│   └── raw/
+│       └── accident_data.csv  # Fuente original: 670.679 filas
 ├── etl_python/
-│   ├── extract.py       # Ingesta rápida vía PostgreSQL COPY hacia staging
-│   └── transform.py     # Orquestación SQL y reporte de auditoría/conciliación
-├── .env.example         # Plantilla de variables de entorno
-├── requirements.txt     # Dependencias de Python
+│   ├── extract.py             # Carga del CSV hacia staging mediante COPY
+│   └── transform.py           # Transformación, carga y auditoría
+├── scripts_sql/
+│   ├── 01_staging.sql         # Creación del esquema y tabla de staging
+│   ├── 02_dwh.sql             # Creación del modelo dimensional
+│   └── 03_etl_load.sql        # Reglas de transformación y carga al DWH
+├── .env.example               # Plantilla de conexión a PostgreSQL
+├── .gitignore
+├── requirements.txt
 └── README.md
 ```
 
-## Reglas Clave Implementadas (Avance 1)
+## Componentes implementados en el Avance 2
 
-- **Trazabilidad en Staging:** `staging.stg_accident_data` conserva `numero_fila` (línea física `2..670680` de `accident_data.csv`) y `fecha_carga`, sin alterar el grano ni las columnas del modelo `dwh`.
-- **Deduplicación exacta:** `03_etl_load.sql` descarta únicamente filas idénticas en las 14 columnas de negocio (`670,679` -> `670,660`, eliminando `19` duplicados exactos) sin filtrar por `Index` repetido.
-- **Geografía (`DIM_Ubicacion`):** `UNIQUE NULLS NOT DISTINCT (Distrito_Area, Area_Urbana, Latitud, Longitud)` y validación explícita de rangos (`Latitud` `[-90, 90]`, `Longitud` `[-180, 180]`).
-- **Tiempo (`DIM_Tiempo`):** Festividades y Bank Holidays del Reino Unido (`Año Nuevo`, `Halloween`, `Guy Fawkes Night`, `Navidad`, `Boxing Day`, etc.) y `'Sin festividad'` por defecto.
+- **Staging y trazabilidad:** `staging.stg_accident_data` conserva el número de fila original mediante `numero_fila` y registra `fecha_carga`.
+- **Modelo dimensional:** esquema estrella compuesto por `FACT_Accidentes`, `DIM_Tiempo`, `DIM_Ubicacion`, `DIM_Vehiculo` y `DIM_Contexto_Siniestro`.
+- **Deduplicación exacta:** se eliminan únicamente las filas idénticas en las 14 columnas de negocio. De 670.679 registros se obtienen 670.660 filas únicas, eliminando 19 duplicados.
+- **Transformación y homologación:** normalización de fechas, ubicación, vehículos, severidad y condiciones del siniestro.
+- **Integridad:** validación de coordenadas, claves foráneas y registros centinela con identificador `-1`.
+- **Auditoría:** conciliación automática entre las filas únicas de staging y los registros cargados en la tabla de hechos.
 
-## Orden de Ejecución
+## Configuración en Windows PowerShell
 
-1. **Configurar entorno:**
-   ```bash
-   cp .env.example .env
-   # Editar .env con credenciales de PostgreSQL
-   python -m venv venv
-   source venv/bin/activate  # En Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+Desde la carpeta raíz del proyecto, ejecutar:
 
-2. **Crear base de datos en PostgreSQL:**
-   ```sql
-   CREATE DATABASE dft_accidents_dw;
-   ```
+```powershell
+Copy-Item .env.example .env
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
 
-3. **Ejecutar DDL:**
-   - Ejecutar `scripts_sql/01_staging.sql` en `dft_accidents_dw`.
-   - Ejecutar `scripts_sql/02_dwh.sql` en `dft_accidents_dw`.
+Editar `.env` e ingresar las credenciales de PostgreSQL:
 
-4. **Ejecutar ETL y Auditoría:**
-   ```bash
-   python etl_python/extract.py
-   python etl_python/transform.py
-   ```
-   *(Alternativa SQL directa para transformación: ejecutar `scripts_sql/03_etl_load.sql` tras `extract.py`).*
+```dotenv
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=dft_accidents_dw
+DB_USER=postgres
+DB_PASSWORD=tu_password
+```
+
+El archivo `.env` contiene información local y no debe subirse al repositorio.
+
+## Orden de ejecución
+
+### 1. Crear la base de datos
+
+Ejecutar en PostgreSQL o pgAdmin:
+
+```sql
+CREATE DATABASE dft_accidents_dw;
+```
+
+### 2. Crear staging y el Data Warehouse
+
+Conectarse a `dft_accidents_dw` y ejecutar, en este orden:
+
+1. `scripts_sql/01_staging.sql`
+2. `scripts_sql/02_dwh.sql`
+
+Estos scripts eliminan y vuelven a crear las tablas correspondientes, por lo que reemplazan cualquier contenido anterior.
+
+### 3. Ejecutar la extracción
+
+```powershell
+.\.venv\Scripts\python.exe .\etl_python\extract.py
+```
+
+Este proceso vacía `staging.stg_accident_data` y carga las 670.679 filas de `accident_data.csv`.
+
+### 4. Ejecutar la transformación, carga y auditoría
+
+```powershell
+.\.venv\Scripts\python.exe .\etl_python\transform.py
+```
+
+El proceso ejecuta `scripts_sql/03_etl_load.sql`, reconstruye el contenido del modelo dimensional y muestra la conciliación final en consola.
+
+## Resultado esperado
+
+| Objeto | Registros esperados |
+|---|---:|
+| `staging.stg_accident_data` | 670.679 |
+| `dwh.DIM_Tiempo` | 2.558 |
+| `dwh.DIM_Ubicacion` | 582.091 |
+| `dwh.DIM_Vehiculo` | 16 |
+| `dwh.DIM_Contexto_Siniestro` | 1.470 |
+| `dwh.FACT_Accidentes` | 670.660 |
+
+La ejecución correcta debe finalizar con cero claves foráneas huérfanas y el mensaje `Estado conciliación : OK`.
+
+## Ejecución alternativa de la transformación
+
+Después de ejecutar `extract.py`, también es posible ejecutar directamente `scripts_sql/03_etl_load.sql` desde PostgreSQL. Esta alternativa realiza la transformación y carga, pero no imprime el reporte de auditoría generado por `transform.py`.
